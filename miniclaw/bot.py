@@ -24,14 +24,20 @@ class miniclaw:
     def from_config(cls,config_path=None,workspace=None):
         config = load_config(config_path)
         api_key = config.providers.openai.get("apikey")
+        env_baseurl=config.providers.openai.get("baseurl")
+        env_model=config.providers.openai.get("model")
+
         if not api_key:
             raise ValueError("OpenAI API key is required")
-
+        if not env_baseurl:
+            raise ValueError("OpenAI base URL is required")
+        if not env_model:
+            raise ValueError("OpenAI model is required")
         if workspace is None:
             workspace = Path.home() / ".miniclaw"
         workspace.mkdir(parents=True, exist_ok=True)
         
-        provider = OpenAICompatProvider(api_key,config.agents.default.base_url,config.agents.default.model)
+        provider = OpenAICompatProvider(api_key,env_baseurl,env_model)
 
         session_manager = SessionManager()
         memory_store = MemoryStore(workspace)
@@ -41,7 +47,7 @@ class miniclaw:
         consolidator = Consolidator(
             store=memory_store,
             provider=provider,
-            model=config.agents.default.model,
+            model=env_model,
             sessions=session_manager,
             context_window_tokens=128000,
             max_completion_tokens=4096
@@ -60,7 +66,7 @@ class miniclaw:
         dream = Dream(
             store=memory_store,
             provider=provider,
-            model=config.agents.default.model,
+            model=env_model,
             tools=tool_registry,  # 暂时使用 None，后续需要实现工具系统
             runner=None   # 暂时使用 None，后续需要实现 Runner
         )
@@ -77,6 +83,7 @@ class miniclaw:
             # 启动 Dream 定时任务（每小时运行一次）
             async def run_dream_periodically():
                 while True:
+                    await asyncio.sleep(3600)  # 每小时运行一次
                     print("Running Dream...")
                     try:
                         await dream.process_dream()
@@ -90,6 +97,7 @@ class miniclaw:
             # 启动 AutoCompact 定时任务（每10分钟检查一次）
             async def run_autocompact_periodically():
                 while True:
+                    await asyncio.sleep(600)  # 每10分钟检查一次
                     print("Running AutoCompact...")
                     try:
                         autocompact.check_expired(

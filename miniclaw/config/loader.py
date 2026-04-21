@@ -9,7 +9,7 @@ class Config(BaseSettings):
         class Defaults(BaseSettings):
             model: str = "gpt-4.1-mini"
             provider: str = "openai"
-            base_url: str = "https://api.chatanywhere.tech"
+            base_url: str = "https://api.openai.com/v1"
     
         default: Defaults = Defaults() 
     
