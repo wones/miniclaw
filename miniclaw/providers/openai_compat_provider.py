@@ -6,6 +6,7 @@ Based on miniclaw's design.
 import openai
 import json
 import time
+import asyncio
 import uuid
 from loguru import logger
 from miniclaw.providers.base import LLMProvider, ToolCallRequest, LLMResponse
@@ -30,7 +31,7 @@ class OpenAICompatProvider(LLMProvider):
                 if current_time - self.last_request_time < self.request_interval:
                     wait_time = self.request_interval - (current_time - self.last_request_time)
                     logger.debug(f"Rate limiting: waiting {wait_time:.2f} seconds")
-                    time.sleep(wait_time)
+                    await asyncio.sleep(wait_time)
                 
                 # Make the request
                 response = self.client.chat.completions.create(
@@ -70,7 +71,7 @@ class OpenAICompatProvider(LLMProvider):
             except Exception as e:
                 logger.debug(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(2)
+                    await asyncio.sleep(2)
                 else:
                     raise
 
