@@ -500,7 +500,7 @@ class Dream:
                     self.store.write_user(updates["user"])
                     changelog.append("user: 更新用户信息")
             
-            print(f"Dream Phase 2 完成: {len(changelog)} 项更新")
+            print(f"Dream完成: {len(changelog)} 项更新")
             for change in changelog:
                 print(f"  - {change}")
             
