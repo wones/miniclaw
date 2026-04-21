@@ -9,6 +9,8 @@ from miniclaw.agent.memory import Consolidator, MemoryStore,Dream
 from miniclaw.agent.context import ContextBuilder
 from miniclaw.agent.autocompact import AutoCompact
 from miniclaw.agent.tools import setup_tools
+from miniclaw.server.webhook import app
+import uvicorn
 
 
 class miniclaw:
@@ -113,3 +115,6 @@ class miniclaw:
         finally:
             pass
 
+    @classmethod
+    def run_server(cls,host='0.0.0.0',port=8765):
+        uvicorn.run(app, host=host, port=port)
