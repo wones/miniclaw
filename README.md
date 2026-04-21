@@ -43,8 +43,8 @@ pip install -e .
 
 
 **1. Configure** (`./.env`)
-
-Configure these **two parts** in your config (other options have defaults).
+> [!TIP]
+> Create the configuration file if it does not exist.
 
 *Set your api key,base url and model* :
 ```json
