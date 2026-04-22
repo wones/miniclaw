@@ -7,6 +7,7 @@ import openai
 import json
 import time
 import asyncio
+from typing import Any
 import uuid
 from loguru import logger
 from miniclaw.providers.base import LLMProvider, ToolCallRequest, LLMResponse
@@ -21,9 +22,20 @@ class OpenAICompatProvider(LLMProvider):
         self.request_interval = request_interval
         self.last_request_time = 0
         self.max_retries = max_retries
+    
+    async def _create_completion(self,model:str,messages:list,tools:list=None) -> Any:
+        def _sync_call():
+            return self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=tools
+            )
+        return await asyncio.to_thread(_sync_call)
+
+
 
     async def chat(self, messages: list, tools: list = None) -> LLMResponse:
-        """Chat with the LLM."""
+        """Chat with the LLM using async execution."""
         for attempt in range(self.max_retries):
             try:
                 # Rate limiting
@@ -34,7 +46,7 @@ class OpenAICompatProvider(LLMProvider):
                     await asyncio.sleep(wait_time)
                 
                 # Make the request
-                response = self.client.chat.completions.create(
+                response = await self._create_completion(
                     model=self.default_model,
                     messages=messages,
                     tools=tools
@@ -74,6 +86,40 @@ class OpenAICompatProvider(LLMProvider):
                     await asyncio.sleep(2)
                 else:
                     raise
+
+    async def generate_async(self, messages: list, tools: list = None) -> Any:
+        """Async version of generate."""
+        try:
+            response = await self._create_completion(self.default_model, messages, tools)
+            
+            if not response.choices or not response.choices[0]:
+                return "Sorry, no response from model"
+            
+            message = response.choices[0].message
+            
+            if message.tool_calls:
+                tool_calls = []
+                for tool_call in message.tool_calls:
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    
+                    tool_calls.append({
+                        'id': tool_call.id,
+                        'name': tool_call.function.name,
+                        'params': arguments
+                    })
+                return {
+                    'content': message.content,
+                    'tool_calls': tool_calls
+                }
+            else:
+                return message.content
+                
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            return f"Sorry, I encountered an error: {str(e)}"
 
     def generate(self, messages: list, tools: list = None) -> Any:
         """Generate a response from the LLM."""

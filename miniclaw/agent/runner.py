@@ -83,6 +83,19 @@ class AgentRunner:
 
     def __init__(self, provider: LLMProvider):
         self.provider = provider
+        self._tool_semaphore: asyncio.Semaphore | None = None
+
+    def _get_tool_semaphore(self, max_concurrent: int = 5) -> asyncio.Semaphore:
+        """Get or create a semaphore for tool concurrency control."""
+        if self._tool_semaphore is None:
+            self._tool_semaphore = asyncio.Semaphore(max_concurrent)
+        return self._tool_semaphore
+
+    def _get_tool_semaphore(self, max_concurrent: int = 10) -> asyncio.Semaphore:
+        """Get or create a semaphore for tool concurrency control."""
+        if self._tool_semaphore is None:
+            self._tool_semaphore = asyncio.Semaphore(max_concurrent)
+        return self._tool_semaphore
 
     @staticmethod
     def _merge_message_content(left: Any, right: Any) -> str | list[dict]:
@@ -630,18 +643,32 @@ class AgentRunner:
         tool_calls: list[ToolCallRequest],
         external_lookup_counts: dict[str, int],
     ) -> tuple[list[Any], list[dict[str, str]], Optional[BaseException]]:
-        """Execute tools."""
+        """Execute tools with optimized concurrency control."""
         batches = self._partition_tool_batches(spec, tool_calls)
         tool_results: list[tuple[Any, dict[str, str], Optional[BaseException]]] = []
+        semaphore = self._get_tool_semaphore(max_concurrent=5)
+        
+        async def run_with_semaphore(tool_call: ToolCallRequest) -> tuple[Any, dict[str, str], Optional[BaseException]]:
+            async with semaphore:
+                return await self._run_tool(spec, tool_call, external_lookup_counts)
+        
         for batch in batches:
             if spec.concurrent_tools and len(batch) > 1:
-                tool_results.extend(await asyncio.gather(*(
-                    self._run_tool(spec, tool_call, external_lookup_counts)
-                    for tool_call in batch
-                )))
+                results = await asyncio.gather(*(
+                    run_with_semaphore(tool_call) for tool_call in batch
+                ), return_exceptions=True)
+                for result in results:
+                    if isinstance(result, BaseException):
+                        tool_results.append((
+                            f"Error: {type(result).__name__}: {str(result)}",
+                            {"name": "unknown", "status": "error", "detail": str(result)},
+                            result
+                        ))
+                    else:
+                        tool_results.append(result)
             else:
                 for tool_call in batch:
-                    tool_results.append(await self._run_tool(spec, tool_call, external_lookup_counts))
+                    tool_results.append(await run_with_semaphore(tool_call))
 
         results: list[Any] = []
         events: list[dict[str, str]] = []
