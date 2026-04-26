@@ -90,15 +90,6 @@ class SkillsLoader:
         results = await asyncio.gather(*tasks)
         return {name: content for name, content in results if content}
 
-    def load_skills_for_context(self, skill_names: list[str]) -> str:
-        """Load specific skills for inclusion in agent context."""
-        parts = [
-            f"### Skill: {name}\n\n{self._strip_frontmatter(markdown)}"
-            for name in skill_names
-            if (markdown := self.load_skill(name))
-        ]
-        return "\n\n---\n\n".join(parts)
-
     def build_skills_summary(self) -> str:
         """Build a summary of all skills."""
         all_skills = self.list_skills(filter_unavailable=False)
@@ -279,28 +270,33 @@ class SkillsLoader:
         in_summary = False
     
         for line in lines:
-            if line.startswith("# "):
-                if in_summary:
-                    break
-                else:
+            # 遇到二级标题时停止
+            if line.startswith("## "):
+                break
+            # 收集标题和正文
+            if line.startswith("# ") or (in_summary and line.strip()):
+                if not in_summary and line.startswith("# "):
                     in_summary = True
-            if in_summary:
+                elif in_summary:
+                    summary_lines.append(line)
+            elif line.strip():
+                in_summary = True
                 summary_lines.append(line)
-    
-        return "\n".join(summary_lines)
+        return "\n".join(summary_lines).strip()
 
     def load_skills_for_context(self, skill_names: list[str], use_summary: bool = False) -> str:
         """加载技能内容，支持使用摘要"""
         parts = []
         for name in skill_names:
-            if use_summary:
-                content = self.get_skill_summary(name)
-            else:
-                content = self.load_skill(name)
-        
-        if content:
-            parts.append(f"### Skill: {name}\n\n{self._strip_frontmatter(content)}")
-    
+            # 检查是否需要预加载
+            meta = self._get_skill_meta(name)
+            preload = meta.get("preload", True)
+            if not preload:
+                continue  # 跳过不需预加载的技能
+            markdown = self.load_skill(name)
+            if markdown:
+                content = self.get_skill_summary(name) if use_summary else self._strip_frontmatter(markdown)
+                parts.append(f"### Skill: {name}\n\n{content}")
         return "\n\n---\n\n".join(parts)
 
     def load_skill_safely(self, name: str) -> tuple[str | None, str | None]:

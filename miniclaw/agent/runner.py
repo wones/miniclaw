@@ -64,6 +64,9 @@ class AgentRunSpec:
     tool_calling_strategy: str = "function_calling"  # function_calling or react_prompt
     skills_loader: Optional[SkillsLoader] = None
     enable_skills: Optional[list[str]] = None
+    skill_summary: bool = False  # 是否使用技能摘要
+    skill_priority: bool = True  # 是否按优先级加载技能
+    progressive_loading: bool = True  # 新增：渐进式加载模式
 
 @dataclass(slots=True)
 class AgentRunResult:
@@ -292,16 +295,29 @@ class AgentRunner:
         #加载技能
         skills = [] 
         if spec.skills_loader:
-            always_skills = spec.skills_loader.get_always_skills()
-            skills.extend(always_skills)
-            if spec.enable_skills:
-                skills.extend([s for s in spec.enable_skills if s not in skills])
+            # 1. 始终添加技能目录（让大模型知道有哪些技能可用）
+            skills_summary = spec.skills_loader.build_skills_summary()
+            if skills_summary:
+                # 将技能目录添加到系统提示
+                skills_intro = "\n\nYou can read the full skill instructions when needed:\n"
+                messages[0]["content"] = f"{messages[0]['content']}{skills_intro}{skills_summary}"
             
-            if skills:
-                skills_content = spec.skills_loader.load_skills_for_context(skills)
-                if skills_content and messages and messages[0].get("role") == "system":
-                    messages[0]["content"] = f"{messages[0]['content']}\n\n{skills_content}"
-                    # print(messages[0]["content"])
+            # 2. 只有在非渐进式加载模式下才预加载完整内容
+            if not spec.progressive_loading:
+                always_skills = spec.skills_loader.get_always_skills()
+                skills.extend(always_skills)
+                if spec.enable_skills:
+                    skills.extend([s for s in spec.enable_skills if s not in skills])
+            
+                # 按优先级排序
+                if spec.skill_priority:
+                    skills = [s["name"] for s in spec.skills_loader.get_skills_by_priority() if s["name"] in skills]
+            
+                if skills:
+                    skills_content = spec.skills_loader.load_skills_for_context(skills, use_summary=spec.skill_summary)
+                    if skills_content and messages and messages[0].get("role") == "system":
+                        messages[0]["content"] = f"{messages[0]['content']}\n\n{skills_content}"
+                        # print(messages[0]["content"])
         for iteration in range(spec.max_iterations):
             try:
                 # Context governance

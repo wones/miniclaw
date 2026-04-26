@@ -26,6 +26,8 @@ class AgentLoop:
         self.tool_calling_strategy = tool_calling_strategy
         self.runner = AgentRunner(provider)
         self.skills_loader = SkillsLoader(Path("."))
+        # 启动技能热加载
+        self.skills_loader.watch_skills()
 
     async def process_message(self, message, session_key='default'):
         """Process a message and return a response."""
@@ -55,7 +57,9 @@ class AgentLoop:
             context_window_tokens=128000,
             tool_calling_strategy=self.tool_calling_strategy,
             skills_loader=self.skills_loader,
-            enable_skills=["weather"]
+            enable_skills=["weather"],
+            skill_summary=False,
+            skill_priority=True
         )
 
         # Run the agent

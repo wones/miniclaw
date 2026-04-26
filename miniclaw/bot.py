@@ -11,7 +11,7 @@ from miniclaw.agent.autocompact import AutoCompact
 from miniclaw.agent.tools import setup_tools
 from miniclaw.server.webhook import app
 import uvicorn
-from miniclaw.agent.skills import SkillsLoader
+
 
 class miniclaw:
     _active_sessions = set()  # 跟踪活跃会话 
@@ -78,6 +78,7 @@ class miniclaw:
             session_ttl_minutes=30
         )
         
+
         # 启动定时任务
         async def start_scheduled_tasks():
             # 启动 Dream 定时任务（每小时运行一次）
