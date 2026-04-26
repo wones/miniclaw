@@ -318,3 +318,13 @@ class SkillsLoader:
             return content, None
         except Exception as e:
             return None, f"Error loading skill '{name}': {str(e)}"
+
+    def get_skill_priority(self, name: str) -> int:
+        """获取技能优先级"""
+        meta = self._get_skill_meta(name)
+        return meta.get("priority", 0)
+
+    def get_skills_by_priority(self) -> list[dict[str, str]]:
+        """按优先级排序技能"""
+        skills = self.list_skills()
+        return sorted(skills, key=lambda x: self.get_skill_priority(x["name"]), reverse=True)
