@@ -202,3 +202,35 @@ class SkillsLoader:
             key, value = line.split(":", 1)
             metadata[key.strip()] = value.strip().strip('"\'')
         return metadata
+
+    def watch_skills(self, interval: int = 30):
+        """启动技能热加载监控"""
+        async def watcher():
+            while True:
+                await asyncio.sleep(interval)
+                self._refresh_skill_cache()
+    
+        asyncio.create_task(watcher())
+
+    def _refresh_skill_cache(self):
+        """刷新技能缓存"""      
+        all_skills = self.list_skills(filter_unavailable=False)
+        for skill in all_skills:        
+            name = skill["name"]
+            # 检查技能文件是否修改
+            roots = [self.workspace_skills]
+            if self.builtin_skills:
+                roots.append(self.builtin_skills)
+        
+            for root in roots:
+                path = root / name / "SKILL.md"
+                if path.exists():
+                    mtime = path.stat().st_mtime
+                    if name in self._skill_cache:
+                        cached_mtime, _, _ = self._skill_cache[name]
+                        if mtime > cached_mtime:
+                            # 文件已修改，更新缓存
+                            content = path.read_text(encoding="utf-8")
+                            metadata = self.get_skill_metadata(name)
+                            self._skill_cache[name] = (mtime, content, metadata)
+                            print(f"Skill '{name}' updated")
