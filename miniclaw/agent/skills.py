@@ -234,3 +234,50 @@ class SkillsLoader:
                             metadata = self.get_skill_metadata(name)
                             self._skill_cache[name] = (mtime, content, metadata)
                             print(f"Skill '{name}' updated")
+
+    def check_skill_dependencies(self, name: str) -> tuple[bool, list[str]]:
+        """检查技能依赖"""
+        meta = self._get_skill_meta(name)
+        requires = meta.get("requires", {})
+    
+        missing = []
+    
+        # 检查 CLI 工具
+        for cmd in requires.get("bins", []):
+            if not shutil.which(cmd):
+                missing.append(f"CLI tool: {cmd}")
+    
+        # 检查环境变量
+        for env in requires.get("env", []):
+            if not os.environ.get(env):
+                missing.append(f"Environment variable: {env}")
+    
+        # 检查 Python 包
+        for pkg in requires.get("python", []):
+            try:
+                __import__(pkg)
+            except ImportError:
+                missing.append(f"Python package: {pkg}")
+    
+        # 检查其他技能
+        for skill in requires.get("skills", []):
+            if not self.load_skill(skill):
+                missing.append(f"Skill: {skill}")
+    
+        return len(missing) == 0, missing
+
+    def load_skill_safely(self, name: str) -> tuple[str | None, str | None]:
+        """安全加载技能，返回内容和错误信息"""
+        try:
+            content = self.load_skill(name)
+            if not content:
+                return None, f"Skill '{name}' not found"
+        
+            # 检查依赖
+            is_available, missing = self.check_skill_dependencies(name)
+            if not is_available:
+                return content, f"Skill '{name}' missing dependencies: {', '.join(missing)}"
+        
+            return content, None
+        except Exception as e:
+            return None, f"Error loading skill '{name}': {str(e)}"
