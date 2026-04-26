@@ -76,6 +76,7 @@ class SkillsLoader:
                         return cached_content
                 # 读取文件并缓存
                 content = path.read_text(encoding="utf-8")
+                self._skill_cache[name] = (mtime, content, {})
                 metadata = self.get_skill_metadata(name)
                 self._skill_cache[name] = (mtime, content, metadata)
                 return content
@@ -208,23 +209,7 @@ class SkillsLoader:
         all_skills = self.list_skills(filter_unavailable=False)
         for skill in all_skills:        
             name = skill["name"]
-            # 检查技能文件是否修改
-            roots = [self.workspace_skills]
-            if self.builtin_skills:
-                roots.append(self.builtin_skills)
-        
-            for root in roots:
-                path = root / name / "SKILL.md"
-                if path.exists():
-                    mtime = path.stat().st_mtime
-                    if name in self._skill_cache:
-                        cached_mtime, _, _ = self._skill_cache[name]
-                        if mtime > cached_mtime:
-                            # 文件已修改，更新缓存
-                            content = path.read_text(encoding="utf-8")
-                            metadata = self.get_skill_metadata(name)
-                            self._skill_cache[name] = (mtime, content, metadata)
-                            print(f"Skill '{name}' updated")
+            self.load_skill(name)
 
     def check_skill_dependencies(self, name: str) -> tuple[bool, list[str]]:
         """检查技能依赖"""

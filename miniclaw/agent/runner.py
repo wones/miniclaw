@@ -95,12 +95,6 @@ class AgentRunner:
             self._tool_semaphore = asyncio.Semaphore(max_concurrent)
         return self._tool_semaphore
 
-    def _get_tool_semaphore(self, max_concurrent: int = 10) -> asyncio.Semaphore:
-        """Get or create a semaphore for tool concurrency control."""
-        if self._tool_semaphore is None:
-            self._tool_semaphore = asyncio.Semaphore(max_concurrent)
-        return self._tool_semaphore
-
     @staticmethod
     def _merge_message_content(left: Any, right: Any) -> str | list[dict]:
         if isinstance(left, str) and isinstance(right, str):
@@ -352,7 +346,7 @@ class AgentRunner:
                 # Use ReAct format for models that don't support function calling
                 react_messages = self._build_react_prompt(messages_for_model, spec.tools)
                 response = await self.provider.chat(react_messages, tools=tools_defs)
-                
+                print(react_messages)
                 # 增加空值检查
                 if response is None:
                     logger.error("Provider returned None response")
