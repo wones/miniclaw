@@ -8,7 +8,9 @@
 
 ## 📢 News
 
+- **2026-04-27** 🚀 实现Skill技能扩展能力：渐进式加载技能/技能缓存/热加载监控/skills并行加载.
 - **2026-04-21** 🚀 实现核心能力：ReAct Loop/分层记忆管理（存储、压缩、Dream）/工具集调用（权限管控、文件管理工具、命令行工具）/HTTP请求响应.
+
 </details>
 
 > miniclaw is for educational, research, and technical exchange purposes only.
@@ -20,10 +22,12 @@
 
 ## Table of Contents
 
-- [News](#-news)
-- [Key Features](#key-features-of-miniclaw)
-- [Install](#-install)
-- [Quick Start](#-quick-start)
+- [📢 News](#-news)
+- [Key Features of miniclaw:](#key-features-of-miniclaw)
+- [Table of Contents](#table-of-contents)
+- [📦 Install](#-install)
+- [🚀 Quick Start](#-quick-start)
+- [💬 Http Request Format](#-http-request-format)
 
 
 ## 📦 Install

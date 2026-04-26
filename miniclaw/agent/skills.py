@@ -84,10 +84,11 @@ class SkillsLoader:
 
     async def load_skills_parallel(self, skill_names: list[str]) -> dict[str, str]:
         """并行加载多个技能"""
-        async def load_skill_async(name):
+        def load_skill_async(name):
             return name, self.load_skill(name)
 
-        tasks = [load_skill_async(name) for name in skill_names]
+        loop = asyncio.get_event_loop()
+        tasks = [loop.run_in_executor(None, load_skill_async, name) for name in skill_names]
         results = await asyncio.gather(*tasks)
         return {name: content for name, content in results if content}
 

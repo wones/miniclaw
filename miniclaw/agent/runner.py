@@ -308,7 +308,24 @@ class AgentRunner:
                     skills = [s["name"] for s in spec.skills_loader.get_skills_by_priority() if s["name"] in skills]
             
                 if skills:
-                    skills_content = spec.skills_loader.load_skills_for_context(skills, use_summary=spec.skill_summary)
+                    # skills_content = spec.skills_loader.load_skills_for_context(skills, use_summary=spec.skill_summary)
+                    skills_contents = await spec.skills_loader.load_skills_parallel(skills)
+                    parts = []
+                    for name in skills:
+                        if name in skills_contents:
+                            # 检查是否需要预加载
+                            meta = spec.skills_loader._get_skill_meta(name)
+                            preload = meta.get("preload", True) if meta else True
+                            if not preload:
+                                continue
+                            content = skills_contents[name]
+                            if spec.skill_summary:
+                                summary = spec.skills_loader.get_skill_summary(name)
+                                content = summary if summary else spec.skills_loader._strip_frontmatter(content)
+                            else:
+                                content = spec.skills_loader._strip_frontmatter(content)
+                            parts.append(f"### Skill: {name}\n\n{content}")
+                    skills_content = "\n\n---\n\n".join(parts)
                     if skills_content and messages and messages[0].get("role") == "system":
                         messages[0]["content"] = f"{messages[0]['content']}\n\n{skills_content}"
                         # print(messages[0]["content"])
