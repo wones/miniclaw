@@ -18,7 +18,7 @@ from loguru import logger
 from miniclaw.agent.hook import AgentHook, AgentHookContext
 from miniclaw.agent.tools.registry import ToolRegistry
 from miniclaw.providers.base import LLMProvider, ToolCallRequest, LLMResponse
-
+from miniclaw.skills import SkillsLoader
 
 _DEFAULT_ERROR_MESSAGE = "Sorry, I encountered an error calling the AI model."
 _PERSISTED_MODEL_ERROR_PLACEHOLDER = "[Assistant reply unavailable due to model error.]"
@@ -62,7 +62,8 @@ class AgentRunSpec:
     checkpoint_callback: Optional[Callable] = None
     injection_callback: Optional[Callable] = None
     tool_calling_strategy: str = "function_calling"  # function_calling or react_prompt
-
+    skills_loader: Optional[SkillsLoader] = None
+    enable_skills: Optional[list[str]] = None
 
 @dataclass(slots=True)
 class AgentRunResult:
@@ -288,7 +289,19 @@ class AgentRunner:
         length_recovery_count = 0
         had_injections = False
         injection_cycles = 0
-
+        #加载技能
+        skills = [] 
+        if spec.skills_loader:
+            always_skills = spec.skills_loader.get_always_skills()
+            skills.extend(always_skills)
+            if spec.enable_skills:
+                skills.extend([s for s in spec.enable_skills if s not in skills])
+            
+            if skills:
+                skills_content = spec.skills_loader.load_skills_for_context(skills)
+                if skills_content and messages and messages[0].get("role") == "system":
+                    messages[0]["content"] = f"{messages[0]['content']}\n\n{skills_content}"
+                    print(messages[0]["content"])
         for iteration in range(spec.max_iterations):
             try:
                 # Context governance

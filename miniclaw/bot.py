@@ -11,7 +11,7 @@ from miniclaw.agent.autocompact import AutoCompact
 from miniclaw.agent.tools import setup_tools
 from miniclaw.server.webhook import app
 import uvicorn
-
+from miniclaw.agent.skills import SkillsLoader
 
 class miniclaw:
     _active_sessions = set()  # 跟踪活跃会话 

@@ -7,6 +7,9 @@ from miniclaw.session.manager import SessionManager
 from miniclaw.providers.base import LLMProvider
 from miniclaw.bus.queue import MessageBus
 from miniclaw.agent.runner import AgentRunner, AgentRunSpec
+from miniclaw.agent.skills import SkillsLoader
+from pathlib import Path
+
 
 
 class AgentLoop:
@@ -22,6 +25,7 @@ class AgentLoop:
         self.tool_registry = tool_registry
         self.tool_calling_strategy = tool_calling_strategy
         self.runner = AgentRunner(provider)
+        self.skills_loader = SkillsLoader(Path("."))
 
     async def process_message(self, message, session_key='default'):
         """Process a message and return a response."""
@@ -50,6 +54,8 @@ class AgentLoop:
             session_key=session_key,
             context_window_tokens=128000,
             tool_calling_strategy=self.tool_calling_strategy,
+            skills_loader=self.skills_loader,
+            enable_skills=["weather"]
         )
 
         # Run the agent
