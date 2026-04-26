@@ -301,7 +301,7 @@ class AgentRunner:
                 skills_content = spec.skills_loader.load_skills_for_context(skills)
                 if skills_content and messages and messages[0].get("role") == "system":
                     messages[0]["content"] = f"{messages[0]['content']}\n\n{skills_content}"
-                    print(messages[0]["content"])
+                    # print(messages[0]["content"])
         for iteration in range(spec.max_iterations):
             try:
                 # Context governance

@@ -25,6 +25,7 @@ class SkillsLoader:
         self.workspace_skills = workspace / "skills" / "workspace"
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR
         self.disabled_skills = disabled_skills or set()
+        self._skill_cache: dict[str, tuple[float, str, dict]] = {}  # {skill_name: (mtime, content, metadata)}
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
         """List all available skills."""
@@ -66,7 +67,17 @@ class SkillsLoader:
         for root in roots:
             path = root / name / "SKILL.md"
             if path.exists():
-                return path.read_text(encoding="utf-8")
+                mtime = path.stat().st_mtime
+                # 检查缓存
+                if name in self._skill_cache:
+                    cached_mtime, cached_content, _ = self._skill_cache[name]
+                    if cached_mtime >= mtime:
+                        return cached_content
+                # 读取文件并缓存
+                content = path.read_text(encoding="utf-8")
+                metadata = self.get_skill_metadata(name)
+                self._skill_cache[name] = (mtime, content, metadata)
+                return content
         return None
 
     def load_skills_for_context(self, skill_names: list[str]) -> str:
