@@ -61,10 +61,22 @@ class MemoryStore:
         long_term = self.read_memory()
         return f"# Memory\n\n{long_term}" if long_term else ""
     
-    def append_history(self,entry: str) -> int:
+    def append_history(
+        self,
+        entry: str,
+        session_key: str | None = None,
+        kind: str = "dialogue",
+    ) -> int:
         cursor = self._next_cursor()
         ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-        record = {"cursor":cursor,"timestamp":ts,"content":entry.rstrip()}
+        record = {
+            "cursor": cursor,
+            "timestamp": ts,
+            "content": entry.rstrip(),
+            "kind": kind,
+        }
+        if session_key:
+            record["session_key"] = session_key
         with open(self.history_file,"a",encoding="utf-8") as f:
             f.write(json.dumps(record,ensure_ascii=False) + "\n")
         self._cursor_file.write_text(str(cursor))
@@ -152,9 +164,13 @@ class MemoryStore:
             lines.append(f"[{message.get('timestamp','?')[:16]}] {message['role'].upper()}: {message['content']}")
         return "\n".join(lines)
 
-    def raw_archive(self,messages:List[dict]) -> str:
+    def raw_archive(self,messages:List[dict], session_key: str | None = None) -> str:
         formatted = self._format_messages(messages)
-        self.append_history(f"[RAW] {len(messages)} messages\n{formatted}")
+        self.append_history(
+            f"[RAW] {len(messages)} messages\n{formatted}",
+            session_key=session_key,
+            kind="raw_archive",
+        )
         return f"Archived {len(messages)} messages (raw mode)"
        
 
@@ -257,19 +273,23 @@ class Consolidator:
             total_tokens += self._estimate_message_tokens(msg)
         return total_tokens,"simple_estimate"
 
-    async def archive(self,messages:list) -> Optional[str]:
+    async def archive(self,messages:list, session_key: str | None = None) -> Optional[str]:
         if not messages:
             return None
         try:
             formatted = MemoryStore._format_messages(messages)
-            response = self.provider.generate([
+            response = self.provider.generate(
+                [
                 {"role":"system","content":"请总结以下对话的要点，生成简洁的摘要，保留重要信息。"},
-                {"role":"user","content":formatted}])
+                {"role":"user","content":formatted}
+                ],
+                model=self.model,
+            )
             summary = response if response else "[no summary]"
-            self.store.append_history(summary)
+            self.store.append_history(summary, session_key=session_key, kind="summary")
             return summary
         except Exception as e:
-            self.store.raw_archive(messages)
+            self.store.raw_archive(messages, session_key=session_key)
             return None
     
     async def maybe_consolidate_by_tokens(self,session) -> None:
@@ -382,10 +402,13 @@ class Dream:
         content = "\n\n".join([f"[{entry['timestamp']}] {entry['content']}" for entry in batch])
         
         try:
-            response = self.provider.generate([
+            response = self.provider.generate(
+                [
                 {"role": "system", "content": "请分析以下对话历史，识别需要提取到长期记忆的重要信息，包括事实、关系、事件等。"},
                 {"role": "user", "content": content}
-            ])
+                ],
+                model=self.model,
+            )
             return response
         except Exception as e:
             print(f"Analysis failed: {e}")
@@ -421,10 +444,13 @@ class Dream:
                     "soul": "要更新到SOUL.md的内容（如果没有则为空）",
                     "user": "要更新到USER.md的内容（如果没有则为空）"}}"""
             
-            response = self.provider.generate([
+            response = self.provider.generate(
+                [
                 {"role": "system", "content": "你是一个记忆管理系统助手。请根据分析结果，用JSON格式提供需要更新的记忆内容。只返回JSON，不要其他内容。"},
                 {"role": "user", "content": prompt}
-            ])
+                ],
+                model=self.model,
+            )
             
             # 这里可以根据响应更新记忆文件
             import json

@@ -90,7 +90,7 @@ class AutoCompact:
             summary = ""
             
             if archive_msgs:
-                summary = await self.consolidator.archive(archive_msgs) or ""
+                summary = await self.consolidator.archive(archive_msgs, session_key=key) or ""
             
             if summary and summary != "(nothing)":
                 self._summaries[key] = (summary, last_active)

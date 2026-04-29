@@ -51,7 +51,10 @@ class LLMProvider(ABC):
 
     @abstractmethod
     async def chat(
-        self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
     ) -> LLMResponse:
         """Chat with the LLM.
         
@@ -65,7 +68,12 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def generate(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> Any:
+    def generate(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        model: Optional[str] = None,
+    ) -> Any:
         """Generate a response from the LLM.
         
         Args:

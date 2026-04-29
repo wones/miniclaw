@@ -11,7 +11,6 @@ class ContextBuilder:
     """Builds the context (system prompt + messages) for the agent."""
     BOOTSTRAP_FILES = ["AGENTS.md","USER.md","SOUL.md","TOOLS.md"]
     _RUNTIME_CONTEXT_TAG = "[Runtime Context]"
-    _MAX_RECENT_HISTORY = 50
 
     def __init__(self,workspace:Path,timezone:Optional[str]=None,disabled_skills:Optional[List[str]] = None):
         self.workspace = workspace
@@ -35,12 +34,6 @@ class ContextBuilder:
             memory_ctx = self.memory.get_memory_context()
             if memory_ctx:
                 parts.append(memory_ctx)
-        # Add recent history
-        if self.memory:
-            entries = self.memory.read_unprocessed_history(since_cursor=0)
-            if entries:
-                capped = entries[-self._MAX_RECENT_HISTORY:]
-                parts.append("# Recent History\n\n" + "\n".join(f"-[{e['timestamp']}] {e['content']}" for e in capped))
         return "\n\n---\n\n".join(parts)
     
     def _get_identity(self,channel:Optional[str]=None) -> str:
@@ -114,13 +107,13 @@ class ContextBuilder:
         ]
         
         # Append user message, merging with last if same role
-        if messages[-1].get("role") == current_role:
+        if messages and messages[-1].get("role") == current_role:
             last = dict(messages[-1])
             last["content"] = f"{last.get('content', '')}\n\n{merged}"
             messages[-1] = last
         else:
             messages.append({"role": current_role, "content": merged})
-        
+
         return messages
     
     def add_tool_result(

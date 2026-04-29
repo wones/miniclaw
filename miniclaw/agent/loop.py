@@ -3,19 +3,28 @@
 Based on miniclaw's design.
 """
 
-from miniclaw.session.manager import SessionManager
-from miniclaw.providers.base import LLMProvider
-from miniclaw.bus.queue import MessageBus
-from miniclaw.agent.runner import AgentRunner, AgentRunSpec
-from miniclaw.agent.skills import SkillsLoader
 from pathlib import Path
 
+from miniclaw.agent.runner import AgentRunSpec, AgentRunner
+from miniclaw.agent.skills import SkillsLoader
 
 
 class AgentLoop:
     """Agent loop for handling conversations and tool calls."""
 
-    def __init__(self, bus, provider, session_manager, context_builder, consolidator, memory_store, tool_registry=None, tool_calling_strategy="react_prompt"):
+    def __init__(
+        self,
+        bus,
+        provider,
+        session_manager,
+        context_builder,
+        consolidator,
+        memory_store,
+        tool_registry=None,
+        tool_calling_strategy="react_prompt",
+        autocompact=None,
+        workspace: Path | None = None,
+    ):
         self.bus = bus
         self.provider = provider
         self.session_manager = session_manager
@@ -24,27 +33,30 @@ class AgentLoop:
         self.memory_store = memory_store
         self.tool_registry = tool_registry
         self.tool_calling_strategy = tool_calling_strategy
+        self.autocompact = autocompact
+        self.workspace = workspace
         self.runner = AgentRunner(provider)
-        self.skills_loader = SkillsLoader(Path("."))
-        # 启动技能热加载
+        self.skills_loader = SkillsLoader(workspace or Path("."))
         self.skills_loader.watch_skills()
 
-    async def process_message(self, message, session_key='default'):
+    async def process_message(self, message, session_key="default"):
         """Process a message and return a response."""
         session = self.session_manager.get_or_create(session_key)
-        session.add_message("user", message)
+        session_summary = None
+        if self.autocompact:
+            session, session_summary = self.autocompact.prepare_session(session, session_key)
+
         if self.consolidator and session.messages:
             await self.consolidator.maybe_consolidate_by_tokens(session)
 
-        # Build context
         context = self.context_builder.build_messages(
-            history=session.get_history(max_messages=50),
+            history=session.get_history(max_messages=0),
             current_message=message,
             channel="cli",
-            chat_id=session_key
+            chat_id=session_key,
+            session_summary=session_summary,
         )
 
-        # Create run spec
         model = getattr(self.provider, "default_model", "gpt-4o")
         spec = AgentRunSpec(
             initial_messages=context,
@@ -52,25 +64,26 @@ class AgentLoop:
             model=model,
             max_iterations=10,
             max_tool_result_chars=10000,
-            workspace=None,
+            workspace=self.workspace,
             session_key=session_key,
             context_window_tokens=128000,
             tool_calling_strategy=self.tool_calling_strategy,
             skills_loader=self.skills_loader,
             enable_skills=["weather"],
             skill_summary=False,
-            skill_priority=True
+            skill_priority=True,
         )
 
-        # Run the agent
         result = await self.runner.run(spec)
 
-        # Add assistant message to session
+        session.add_message("user", message)
         if result.final_content:
             session.add_message("assistant", result.final_content)
-            self.memory_store.append_history(f"User: {message}\nAssistant: {result.final_content}")
+            self.memory_store.append_history(
+                f"User: {message}\nAssistant: {result.final_content}",
+                session_key=session_key,
+                kind="dialogue",
+            )
 
-        # Save session
         self.session_manager.save(session)
-
         return result.final_content

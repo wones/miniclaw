@@ -13,7 +13,18 @@ import inspect
 from pathlib import Path
 from typing import Any, List, Dict, Optional, Callable
 import json
-from loguru import logger
+
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for minimal environments
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+try:
+    import tiktoken
+except ImportError:  # pragma: no cover - optional dependency fallback
+    tiktoken = None
 
 from miniclaw.agent.hook import AgentHook, AgentHookContext
 from miniclaw.agent.tools.registry import ToolRegistry
@@ -84,6 +95,8 @@ class AgentRunResult:
 
 class AgentRunner:
     """Run a tool-capable LLM loop without product-layer concerns."""
+
+    _TOKENIZER_CACHE: dict[str, Any] = {}
 
     def __init__(self, provider: LLMProvider):
         self.provider = provider
@@ -271,6 +284,56 @@ class AgentRunner:
             logger.debug("Failed to parse ReAct tool call: {}", e)
 
         return None
+    
+    def _ensure_context_limit(
+        self,
+        spec: AgentRunSpec,
+        messages: list[dict],
+        tools_defs: list[dict],
+    ) -> list[dict]:
+        """强制确保消息不超限，防止 provider 调用报错。"""
+        if not spec.context_window_tokens:
+            return messages
+        
+        max_context = spec.context_window_tokens
+        max_output = spec.max_tokens or 4096
+        emergency_budget = max_context - max_output - 256
+        
+        # 计算当前 token 数
+        current_tokens = self._estimate_prompt_tokens_chain(
+            self.provider,
+            spec.model,
+            messages,
+            tools_defs,
+        )
+        
+        if current_tokens <= emergency_budget:
+            return messages
+        
+        # 紧急裁剪：只保留系统消息和最近的用户/助手对话
+        logger.warning(
+            f"Context exceeds emergency budget ({current_tokens} > {emergency_budget}), "
+            f"performing emergency truncation"
+        )
+        
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        recent_msgs = [m for m in messages if m.get("role") != "system"][-4:]
+        
+        # 逐步减少，直到符合预算
+        while recent_msgs:
+            test_messages = system_msgs + recent_msgs
+            test_tokens = self._estimate_prompt_tokens_chain(
+                self.provider, spec.model, test_messages, tools_defs
+            )
+            if test_tokens <= emergency_budget:
+                break
+            recent_msgs = recent_msgs[-2:] if len(recent_msgs) > 2 else recent_msgs
+        
+        if not recent_msgs:
+            # 最极端情况：只保留最后一条用户消息
+            non_system = [m for m in messages if m.get("role") != "system"]
+            recent_msgs = non_system[-1:] if non_system else []
+        return system_msgs + recent_msgs
 
     async def run(self, spec: AgentRunSpec) -> AgentRunResult:
         hook = spec.hook or AgentHook()
@@ -330,6 +393,7 @@ class AgentRunner:
                         messages[0]["content"] = f"{messages[0]['content']}\n\n{skills_content}"
                         # print(messages[0]["content"])
         for iteration in range(spec.max_iterations):
+            tools_defs = spec.tools.get_definitions() if spec.tools else []
             try:
                 # Context governance
                 messages_for_model = self._drop_orphan_tool_results(messages)
@@ -339,6 +403,7 @@ class AgentRunner:
                 messages_for_model = self._snip_history(spec, messages_for_model)
                 messages_for_model = self._drop_orphan_tool_results(messages_for_model)
                 messages_for_model = self._backfill_missing_tool_results(messages_for_model)
+                messages_for_model = self._ensure_context_limit(spec, messages_for_model, tools_defs)
             except Exception as exc:
                 logger.warning(
                     "Context governance failed on turn {} for {}: {}; applying minimal repair",
@@ -355,15 +420,15 @@ class AgentRunner:
             context = AgentHookContext(iteration=iteration, messages=messages)
             await hook.before_iteration(context)
             
-            # Get tools definitions
-            tools_defs = spec.tools.get_definitions() if spec.tools else []
-            
             # Handle tool calling strategy
             if spec.tool_calling_strategy == "react_prompt":
                 # Use ReAct format for models that don't support function calling
                 react_messages = self._build_react_prompt(messages_for_model, spec.tools)
-                response = await self.provider.chat(react_messages, tools=tools_defs)
-                print(react_messages)
+                response = await self.provider.chat(
+                    react_messages,
+                    tools=tools_defs,
+                    model=spec.model,
+                )
                 # 增加空值检查
                 if response is None:
                     logger.error("Provider returned None response")
@@ -389,7 +454,11 @@ class AgentRunner:
                             response = synthetic_response
             else:
                 # Use native function calling
-                response = await self.provider.chat(messages_for_model, tools=tools_defs)
+                response = await self.provider.chat(
+                    messages_for_model,
+                    tools=tools_defs,
+                    model=spec.model,
+                )
             
             raw_usage = self._usage_dict(response.usage)
             context.response = response
@@ -638,7 +707,7 @@ class AgentRunner:
     ) -> LLMResponse:
         """Request model response."""
         tools_defs = spec.tools.get_definitions() if spec.tools else []
-        return await self.provider.chat(messages, tools=tools_defs)
+        return await self.provider.chat(messages, tools=tools_defs, model=spec.model)
 
     async def _request_finalization_retry(
         self,
@@ -648,7 +717,7 @@ class AgentRunner:
         """Request finalization retry."""
         retry_messages = list(messages)
         retry_messages.append({"role": "user", "content": "Please provide a complete response."})
-        return await self.provider.chat(retry_messages, tools=None)
+        return await self.provider.chat(retry_messages, tools=None, model=spec.model)
 
     @staticmethod
     def _usage_dict(usage: Optional[dict]) -> dict[str, int]:
@@ -977,12 +1046,12 @@ class AgentRunner:
         if not non_system:
             return messages
 
-        system_tokens = sum(self._estimate_message_tokens(msg) for msg in system_messages)
+        system_tokens = sum(self._estimate_message_tokens(msg, model=spec.model) for msg in system_messages)
         remaining_budget = max(128, budget - system_tokens)
         kept: list[dict] = []
         kept_tokens = 0
         for message in reversed(non_system):
-            msg_tokens = self._estimate_message_tokens(message)
+            msg_tokens = self._estimate_message_tokens(message, model=spec.model)
             if kept and kept_tokens + msg_tokens > remaining_budget:
                 break
             kept.append(message)
@@ -1064,15 +1133,76 @@ class AgentRunner:
             return text
         return text[:max_chars] + "..."
 
-    @staticmethod
-    def _estimate_prompt_tokens_chain(provider: LLMProvider, model: str, messages: list[dict], tools: list[dict]) -> int:
-        """Estimate prompt tokens."""
-        return 0
+    @classmethod
+    def _get_tokenizer(cls, model: str):
+        """Get a cached tokenizer for the target model."""
+        if tiktoken is None:
+            return None
+        if model in cls._TOKENIZER_CACHE:
+            return cls._TOKENIZER_CACHE[model]
+        try:
+            tokenizer = tiktoken.encoding_for_model(model)
+        except Exception:
+            try:
+                tokenizer = tiktoken.get_encoding("cl100k_base")
+            except Exception:
+                tokenizer = None
+        cls._TOKENIZER_CACHE[model] = tokenizer
+        return tokenizer
 
-    @staticmethod
-    def _estimate_message_tokens(message: dict) -> int:
-        """Estimate message tokens."""
-        return len(str(message)) // 4
+    @classmethod
+    def _estimate_text_tokens(cls, text: Any, model: str) -> int:
+        if text is None:
+            return 0
+        if not isinstance(text, str):
+            text = json.dumps(text, ensure_ascii=False)
+        tokenizer = cls._get_tokenizer(model)
+        if tokenizer is not None:
+            try:
+                return len(tokenizer.encode(text))
+            except Exception:
+                pass
+        return max(1, len(text) // 4)
+
+    @classmethod
+    def _estimate_prompt_tokens_chain(
+        cls,
+        provider: LLMProvider,
+        model: str,
+        messages: list[dict],
+        tools: list[dict],
+    ) -> int:
+        """Estimate prompt tokens, including tool schemas."""
+        del provider
+        total = 3  # reply priming
+        for message in messages:
+            total += cls._estimate_message_tokens(message, model=model)
+        if tools:
+            total += cls._estimate_text_tokens(json.dumps(tools, ensure_ascii=False), model)
+        return total
+
+    @classmethod
+    def _estimate_message_tokens(cls, message: dict, model: str = "cl100k_base") -> int:
+        """Estimate message tokens for mixed message payloads."""
+        total = 4  # per-message overhead
+        role = message.get("role")
+        if role:
+            total += cls._estimate_text_tokens(role, model)
+
+        content = message.get("content")
+        if isinstance(content, list):
+            for block in content:
+                total += cls._estimate_text_tokens(block, model)
+        else:
+            total += cls._estimate_text_tokens(content, model)
+
+        if message.get("name"):
+            total += cls._estimate_text_tokens(message["name"], model)
+        if message.get("tool_call_id"):
+            total += cls._estimate_text_tokens(message["tool_call_id"], model)
+        if message.get("tool_calls"):
+            total += cls._estimate_text_tokens(message["tool_calls"], model)
+        return total
 
     @staticmethod
     def _find_legal_message_start(messages: list[dict]) -> Optional[int]:

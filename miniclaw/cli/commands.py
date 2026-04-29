@@ -1,9 +1,18 @@
 import asyncio
-from miniclaw.bot import miniclaw
 import sys
-from loguru import logger
-logger.remove()
-logger.add(sys.stderr, level="WARNING")
+
+from miniclaw.bot import miniclaw
+
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for minimal environments
+    import logging
+
+    logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+    logger = logging.getLogger(__name__)
+else:
+    logger.remove()
+    logger.add(sys.stderr, level="WARNING")
 
 async def agent_command():
     try:

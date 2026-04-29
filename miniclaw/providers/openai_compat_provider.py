@@ -9,7 +9,13 @@ import time
 import asyncio
 from typing import Any
 import uuid
-from loguru import logger
+
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for minimal environments
+    import logging
+
+    logger = logging.getLogger(__name__)
 from miniclaw.providers.base import LLMProvider, ToolCallRequest, LLMResponse
 
 
@@ -34,8 +40,9 @@ class OpenAICompatProvider(LLMProvider):
 
 
 
-    async def chat(self, messages: list, tools: list = None) -> LLMResponse:
+    async def chat(self, messages: list, tools: list = None, model: str | None = None) -> LLMResponse:
         """Chat with the LLM using async execution."""
+        selected_model = model or self.default_model
         for attempt in range(self.max_retries):
             try:
                 # Rate limiting
@@ -47,7 +54,7 @@ class OpenAICompatProvider(LLMProvider):
                 
                 # Make the request
                 response = await self._create_completion(
-                    model=self.default_model,
+                    model=selected_model,
                     messages=messages,
                     tools=tools
                 )
@@ -87,10 +94,10 @@ class OpenAICompatProvider(LLMProvider):
                 else:
                     raise
 
-    async def generate_async(self, messages: list, tools: list = None) -> Any:
+    async def generate_async(self, messages: list, tools: list = None, model: str | None = None) -> Any:
         """Async version of generate."""
         try:
-            response = await self._create_completion(self.default_model, messages, tools)
+            response = await self._create_completion(model or self.default_model, messages, tools)
             
             if not response.choices or not response.choices[0]:
                 return "Sorry, no response from model"
@@ -121,11 +128,11 @@ class OpenAICompatProvider(LLMProvider):
             logger.error(f"Error generating response: {e}")
             return f"Sorry, I encountered an error: {str(e)}"
 
-    def generate(self, messages: list, tools: list = None) -> Any:
+    def generate(self, messages: list, tools: list = None, model: str | None = None) -> Any:
         """Generate a response from the LLM."""
         try:
             response = self.client.chat.completions.create(
-                model=self.default_model,
+                model=model or self.default_model,
                 messages=messages,
                 tools=tools
             )

@@ -14,7 +14,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for minimal environments
+    import logging
+
+    logger = logging.getLogger(__name__)
 
 from miniclaw.agent.tools.base import Tool, tool_parameters
 from miniclaw.agent.tools.schema import IntegerSchema, StringSchema, tool_parameters_schema
