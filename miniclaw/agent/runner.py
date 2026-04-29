@@ -38,6 +38,7 @@ _MAX_LENGTH_RECOVERIES = 3
 _MAX_INJECTIONS_PER_TURN = 3
 _MAX_INJECTION_CYCLES = 5
 _SNIP_SAFETY_BUFFER = 1024
+_CONTEXT_REPAIR_BUFFER = 64
 _MICROCOMPACT_KEEP_RECENT = 10
 _MICROCOMPACT_MIN_CHARS = 500
 _COMPACTABLE_TOOLS = frozenset({
@@ -284,6 +285,94 @@ class AgentRunner:
             logger.debug("Failed to parse ReAct tool call: {}", e)
 
         return None
+
+    @classmethod
+    def _truncate_text_for_token_budget(
+        cls,
+        text: str,
+        model: str,
+        max_tokens: int,
+    ) -> str:
+        """Compact oversized text locally while preserving the start and end."""
+        if cls._estimate_text_tokens(text, model) <= max_tokens:
+            return text
+
+        notice = (
+            "[Message truncated locally because it exceeds the model context window. "
+            "The beginning and end are preserved.]\n\n"
+        )
+        omission = "\n\n[... middle omitted due to context limit ...]\n\n"
+        if max_tokens <= cls._estimate_text_tokens(notice, model) + 32:
+            return text[: max(64, max_tokens * 4)]
+
+        ratio = max_tokens / max(1, cls._estimate_text_tokens(text, model))
+        keep_chars = min(len(text), max(256, int(len(text) * ratio * 0.9)))
+        head_chars = max(96, keep_chars // 2)
+        tail_chars = max(96, keep_chars - head_chars)
+        truncated = notice + text[:head_chars] + omission + text[-tail_chars:]
+
+        while (
+            cls._estimate_text_tokens(truncated, model) > max_tokens
+            and (head_chars > 96 or tail_chars > 96)
+        ):
+            head_chars = max(96, int(head_chars * 0.85))
+            tail_chars = max(96, int(tail_chars * 0.85))
+            truncated = notice + text[:head_chars] + omission + text[-tail_chars:]
+
+        if cls._estimate_text_tokens(truncated, model) > max_tokens:
+            truncated = text[: max(128, max_tokens * 4)]
+        return truncated
+
+    def _fit_messages_to_budget(
+        self,
+        spec: AgentRunSpec,
+        messages: list[dict],
+        tools_defs: list[dict],
+        budget_tokens: int,
+    ) -> list[dict]:
+        """Shrink the latest user message if history trimming is still insufficient."""
+        updated = [dict(message) for message in messages]
+        estimate = self._estimate_prompt_tokens_chain(
+            self.provider,
+            spec.model,
+            updated,
+            tools_defs,
+        )
+        if estimate <= budget_tokens:
+            return updated
+
+        for _ in range(4):
+            user_index = next(
+                (idx for idx in range(len(updated) - 1, -1, -1) if updated[idx].get("role") == "user"),
+                None,
+            )
+            if user_index is None:
+                break
+            content = updated[user_index].get("content")
+            if not isinstance(content, str) or not content.strip():
+                break
+
+            current_content_tokens = self._estimate_text_tokens(content, spec.model)
+            overflow = estimate - budget_tokens + _CONTEXT_REPAIR_BUFFER
+            target_tokens = max(96, current_content_tokens - overflow)
+            replacement = self._truncate_text_for_token_budget(content, spec.model, target_tokens)
+            if replacement == content:
+                break
+
+            updated[user_index] = dict(updated[user_index])
+            updated[user_index]["content"] = replacement
+            new_estimate = self._estimate_prompt_tokens_chain(
+                self.provider,
+                spec.model,
+                updated,
+                tools_defs,
+            )
+            if new_estimate >= estimate:
+                break
+            estimate = new_estimate
+            if estimate <= budget_tokens:
+                break
+        return updated
     
     def _ensure_context_limit(
         self,
@@ -333,7 +422,33 @@ class AgentRunner:
             # 最极端情况：只保留最后一条用户消息
             non_system = [m for m in messages if m.get("role") != "system"]
             recent_msgs = non_system[-1:] if non_system else []
-        return system_msgs + recent_msgs
+
+        candidate = system_msgs + recent_msgs
+        candidate = self._fit_messages_to_budget(
+            spec,
+            candidate,
+            tools_defs,
+            emergency_budget,
+        )
+        candidate_tokens = self._estimate_prompt_tokens_chain(
+            self.provider,
+            spec.model,
+            candidate,
+            tools_defs,
+        )
+        if candidate_tokens <= emergency_budget:
+            return candidate
+
+        non_system = [m for m in candidate if m.get("role") != "system"]
+        if non_system:
+            candidate = system_msgs + non_system[-1:]
+            candidate = self._fit_messages_to_budget(
+                spec,
+                candidate,
+                tools_defs,
+                emergency_budget,
+            )
+        return candidate
 
     async def run(self, spec: AgentRunSpec) -> AgentRunResult:
         hook = spec.hook or AgentHook()
@@ -459,6 +574,14 @@ class AgentRunner:
                     tools=tools_defs,
                     model=spec.model,
                 )
+                if response is None:
+                    logger.error("Provider returned None response")
+                    response = LLMResponse(
+                        content="Error: Model returned no response",
+                        tool_calls=[],
+                        finish_reason="error",
+                        usage=None,
+                    )
             
             raw_usage = self._usage_dict(response.usage)
             context.response = response

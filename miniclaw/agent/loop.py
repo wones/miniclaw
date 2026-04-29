@@ -12,6 +12,8 @@ from miniclaw.agent.skills import SkillsLoader
 class AgentLoop:
     """Agent loop for handling conversations and tool calls."""
 
+    _DEFAULT_CONTEXT_WINDOW_TOKENS = 128000
+
     def __init__(
         self,
         bus,
@@ -39,6 +41,33 @@ class AgentLoop:
         self.skills_loader = SkillsLoader(workspace or Path("."))
         self.skills_loader.watch_skills()
 
+    def _resolve_context_window_tokens(self) -> int:
+        """Resolve the context window budget from configured components."""
+        provider_budget = getattr(self.provider, "context_window_tokens", None)
+        if isinstance(provider_budget, int) and provider_budget > 0:
+            return provider_budget
+
+        consolidator_budget = getattr(self.consolidator, "context_window_tokens", None)
+        if isinstance(consolidator_budget, int) and consolidator_budget > 0:
+            return consolidator_budget
+
+        return self._DEFAULT_CONTEXT_WINDOW_TOKENS
+
+    @staticmethod
+    def _merge_session_summaries(
+        resumed_summary: str | None,
+        rolling_summary: str | None,
+    ) -> str | None:
+        """Merge archived session summary and rolling in-session summary."""
+        parts: list[str] = []
+        if rolling_summary:
+            parts.append("[Conversation Memory]\n" + rolling_summary)
+        if resumed_summary:
+            parts.append(resumed_summary)
+        if not parts:
+            return None
+        return "\n\n".join(parts)
+
     async def process_message(self, message, session_key="default"):
         """Process a message and return a response."""
         session = self.session_manager.get_or_create(session_key)
@@ -49,14 +78,16 @@ class AgentLoop:
         if self.consolidator and session.messages:
             await self.consolidator.maybe_consolidate_by_tokens(session)
 
+        rolling_summary = session.metadata.get("_rolling_summary")
+        combined_summary = self._merge_session_summaries(session_summary, rolling_summary)
+
         context = self.context_builder.build_messages(
             history=session.get_history(max_messages=0),
             current_message=message,
             channel="cli",
             chat_id=session_key,
-            session_summary=session_summary,
+            session_summary=combined_summary,
         )
-
         model = getattr(self.provider, "default_model", "gpt-4o")
         spec = AgentRunSpec(
             initial_messages=context,
@@ -66,7 +97,7 @@ class AgentLoop:
             max_tool_result_chars=10000,
             workspace=self.workspace,
             session_key=session_key,
-            context_window_tokens=128000,
+            context_window_tokens=self._resolve_context_window_tokens(),
             tool_calling_strategy=self.tool_calling_strategy,
             skills_loader=self.skills_loader,
             enable_skills=["weather"],

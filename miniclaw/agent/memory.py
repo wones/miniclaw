@@ -183,6 +183,8 @@ class Consolidator:
     _MAX_CONSOLIDATION_ROUNDS = 5
     _MAX_CHUNK_MESSAGES = 60
     _SAFETY_BUFFER = 1024
+    _ROLLING_SUMMARY_KEY = "_rolling_summary"
+    _MAX_ROLLING_SUMMARY_CHARS = 4000
     _TOKENIZER_CACHE = None  # 类变量缓存编码器
 
     def __init__(
@@ -273,6 +275,27 @@ class Consolidator:
             total_tokens += self._estimate_message_tokens(msg)
         return total_tokens,"simple_estimate"
 
+    @classmethod
+    def _merge_summary_text(cls, existing: str | None, addition: str | None) -> str | None:
+        """Merge rolling summaries while keeping the newest summary visible."""
+        existing = (existing or "").strip()
+        addition = (addition or "").strip()
+        if not addition:
+            return existing or None
+        if not existing:
+            merged = addition
+        else:
+            merged = f"{existing}\n\n{addition}"
+        if len(merged) <= cls._MAX_ROLLING_SUMMARY_CHARS:
+            return merged
+
+        keep = max(256, cls._MAX_ROLLING_SUMMARY_CHARS // 2)
+        return (
+            merged[:keep]
+            + "\n\n[... older rolling summary omitted ...]\n\n"
+            + merged[-keep:]
+        )
+
     async def archive(self,messages:list, session_key: str | None = None) -> Optional[str]:
         if not messages:
             return None
@@ -329,7 +352,12 @@ class Consolidator:
                 if not chunk:
                     return
                 
-                summary = await self.archive(chunk)
+                summary = await self.archive(chunk, session_key=session.key)
+                if summary and summary != "[no summary]":
+                    session.metadata[self._ROLLING_SUMMARY_KEY] = self._merge_summary_text(
+                        session.metadata.get(self._ROLLING_SUMMARY_KEY),
+                        summary,
+                    )
                 session.messages = session.messages[end_idx:]
                 if hasattr(session,'last_consolidated'):
                     session.last_consolidated = 0

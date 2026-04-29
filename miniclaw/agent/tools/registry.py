@@ -4,6 +4,8 @@ Based on miniclaw's design — instance-based registry with prepare_call()
 pipeline for parameter casting and validation.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 try:
