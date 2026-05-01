@@ -518,7 +518,7 @@ class AgentRunner:
                 messages_for_model = self._snip_history(spec, messages_for_model)
                 messages_for_model = self._drop_orphan_tool_results(messages_for_model)
                 messages_for_model = self._backfill_missing_tool_results(messages_for_model)
-                messages_for_model = self._ensure_context_limit(spec, messages_for_model, tools_defs)
+                
             except Exception as exc:
                 logger.warning(
                     "Context governance failed on turn {} for {}: {}; applying minimal repair",
@@ -539,6 +539,7 @@ class AgentRunner:
             if spec.tool_calling_strategy == "react_prompt":
                 # Use ReAct format for models that don't support function calling
                 react_messages = self._build_react_prompt(messages_for_model, spec.tools)
+                react_messages = self._ensure_context_limit(spec, react_messages, [])
                 response = await self.provider.chat(
                     react_messages,
                     tools=tools_defs,
@@ -569,6 +570,7 @@ class AgentRunner:
                             response = synthetic_response
             else:
                 # Use native function calling
+                messages_for_model = self._ensure_context_limit(spec, messages_for_model, tools_defs)
                 response = await self.provider.chat(
                     messages_for_model,
                     tools=tools_defs,
