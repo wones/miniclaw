@@ -27,6 +27,7 @@ from .secure_tool import (
 )
 from .memory_tool import MemoryTool
 from .exec_tool import ExecTool
+from .web_tool import HttpRequestTool,WebFetchTool,WebSearchTool
 
 
 def setup_tools(
@@ -62,6 +63,9 @@ def setup_tools(
             working_dir=str(workspace),
             restrict_to_workspace=True,
         ),
+        HttpRequestTool(),
+        WebFetchTool(),
+        WebSearchTool()
     ]
 
     for tool in tools:
