@@ -14,6 +14,8 @@ class Session:
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     last_consolidated: int = 0
+    title: str = ""
+    is_pinned: bool = False
 
 
     def add_message(self,role:str,content:str):
@@ -55,6 +57,8 @@ class SessionManager:
             created_at=datetime.fromisoformat(payload["created_at"]),
             updated_at=datetime.fromisoformat(payload["updated_at"]),
             last_consolidated=payload.get("last_consolidated", 0),
+            title=payload.get("title", ""),
+            is_pinned=payload.get("is_pinned", False),
         )
 
     def _load_from_disk(self, key: str) -> Session | None:
@@ -123,3 +127,17 @@ class SessionManager:
         session.last_consolidated=0
         session.updated_at = datetime.now()
         self.save(session)
+    
+    def delete(self, key: str) -> bool:
+        """Delete a session from memory and disk."""
+        if key in self.sessions:
+            del self.sessions[key]
+        
+        path = self._session_path(key)
+        if path is not None and path.exists():
+            try:
+                path.unlink()
+                return True
+            except OSError:
+                return False
+        return True

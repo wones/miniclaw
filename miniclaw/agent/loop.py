@@ -84,7 +84,7 @@ class AgentLoop:
         context = self.context_builder.build_messages(
             history=session.get_history(max_messages=0),
             current_message=message,
-            channel="cli",
+            channel="UI",
             chat_id=session_key,
             session_summary=combined_summary,
         )

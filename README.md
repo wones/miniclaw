@@ -7,6 +7,7 @@
 </div>
 
 ## 📢 News
+- **2026-05-11** 💻 优化前端UI功能:实现可视化会话管理.
 - **2026-05-10** 💻 实现前端UI:具备可视化对话/增加request请求调用大模型方法.
 - **2026-05-01** 📄 优化上下文治理.
 - **2026-04-27** 🎉 实现Skills技能扩展能力：渐进式加载技能/技能缓存/热加载监控/skill并行加载.
@@ -75,3 +76,6 @@ curl -X POST http://localhost:8765/webhook/msg \
 ## 💻  UI Chat Conversation
 
 前端登录地址：http://localhost:8765/
+
+![前端UI截图](./image.png)
+
