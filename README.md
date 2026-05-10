@@ -7,6 +7,7 @@
 </div>
 
 ## 📢 News
+- **2026-05-10** 📄 实现前端UI,具备可视化对话.
 - **2026-05-01** 📄 优化上下文治理.
 - **2026-04-27** 🎉 实现Skills技能扩展能力：渐进式加载技能/技能缓存/热加载监控/skill并行加载.
 - **2026-04-21** 🚀 实现核心能力：ReAct Loop/分层记忆管理（存储、压缩、Dream）/工具集调用（权限管控、文件管理工具、命令行工具）/HTTP请求响应.
@@ -68,6 +69,9 @@ That's it! You have a working AI agent in 2 minutes.
 
 curl -X POST http://localhost:8765/webhook/msg \
   -H "Content-Type: application/json" \
-  -d '{"message": "你好，我的名字是张三", "session_key": "user123", "callback_url": "http://localhost:8765/webhook/test"}'.
+  -d '{"message": "你好", "session_key": "user"}'.
 
 
+## 💻  UI Chat Conversation
+
+前端登录地址：http://localhost:8765/

@@ -1,46 +1,83 @@
-# miniclaw/server/webhook.py
-from fastapi import FastAPI, Request
-import asyncio
+from fastapi import FastAPI, File, UploadFile, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pathlib import Path
 import json
+import os
+import asyncio
 
 app = FastAPI()
+
+origins = ["*"]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+static_dir = Path(__file__).parent / "static"
+
+class CustomStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if path.endswith('.html'):
+            response.headers['Content-Type'] = 'text/html; charset=utf-8'
+        elif path.endswith('.css'):
+            response.headers['Content-Type'] = 'text/css; charset=utf-8'
+        elif path.endswith('.js'):
+            response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+        return response
+
+app.mount("/static", CustomStaticFiles(directory=static_dir), name="static")
+
+@app.get("/")
+async def read_index():
+    index_path = static_dir / "index.html"
+    return FileResponse(index_path, media_type="text/html; charset=utf-8")
+
 bot_instance = None
 
 def init_bot():
     from miniclaw.bot import miniclaw
-    """初始化 miniclaw 实例"""
     global bot_instance
     if bot_instance is None:
         bot_instance = miniclaw.from_config()
 
 @app.on_event("startup")
 async def startup_event():
-    """启动时初始化 bot"""
     init_bot()
 
 @app.post("/webhook/msg")
-async def msg_webhook(request: Request):
-    """接收请求发送的消息"""
+async def webhook_msg(request: Request):
+    body = await request.json()
+    message = body.get("message", "")
+    session_key = body.get("session_key", "default")
+    
+    if not bot_instance:
+        init_bot()
+    
     try:
-        # 解析请求数据
-        data = await request.json()
-        message = data.get("message", "")
-        session_key = data.get("session_key", "default")
-        msg_callback_url = data.get("callback_url")
-        
-        if not message:
-            return {"error": "Message is required"}
-        
-        # 处理消息
-        result = await bot_instance.run(message, session_key)
-        
-        # 如果提供了回调 URL，将结果发送回请求方
-        if msg_callback_url:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                await client.post(msg_callback_url, json={"result": result})
-        
-        return {"result": result}
+        result = bot_instance.run(message)
+        if asyncio.iscoroutine(result):
+            result = await result
+        return {"result": str(result)}
+       
     except Exception as e:
         return {"error": str(e)}
+
+UPLOAD_DIR = Path(__file__).parent / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        file_path = UPLOAD_DIR / file.filename
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        return {"success": True, "filename": file.filename}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

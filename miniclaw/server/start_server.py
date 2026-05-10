@@ -6,7 +6,7 @@ import asyncio
 测试用例：
 curl -X POST http://localhost:8765/webhook/msg \
   -H "Content-Type: application/json" \
-  -d '{"message": "你好，我的名字是张三", "session_key": "user123", "callback_url": "http://localhost:8765/webhook/test"}'
+  -d '{"message": "你好", "session_key": "user"}'
   '''
 
 async def main():

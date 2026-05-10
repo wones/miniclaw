@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能助手</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="chat-container">
+        <!-- 头部 -->
+        <header class="chat-header">
+            <div class="header-content">
+                <div class="logo">🤖</div>
+                <div class="header-info">
+                    <h1>智能助手</h1>
+                    <div class="status">
+                        <span class="status-dot"></span>
+                        <span>在线</span>
+                    </div>
+                </div>
+            </div>
+            <button class="theme-toggle" id="themeToggle" title="切换主题">
+                <span class="theme-icon">🌙</span>
+            </button>
+        </header>
+
+        <!-- 消息列表 -->
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot-message">
+                <div class="avatar bot-avatar">🤖</div>
+                <div class="message-bubble">
+                    <p>你好！我是智能助手，你的AI助手。有什么我可以帮助你的吗？</p>
+                    <span class="message-time">刚刚</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="chat-input">
+            <!-- 表情面板 -->
+            <div class="emoji-panel" id="emojiPanel">
+                <div class="emoji-grid">
+                    <span>😀</span><span>😃</span><span>😄</span><span>😁</span><span>😆</span><span>😅</span><span>🤣</span><span>😂</span><span>🙂</span><span>😊</span><span>😇</span><span>🥰</span>
+                    <span>😍</span><span>🤩</span><span>😘</span><span>😗</span><span>😚</span><span>😋</span><span>🤤</span><span>❤️</span><span>🧡</span><span>💛</span><span>💚</span>
+                    <span>💙</span><span>💜</span><span>🖤</span><span>🤍</span><span>🤎</span><span>👍</span><span>👎</span><span>👏</span><span>🙌</span><span>🎉</span><span>🎊</span>
+                    <span>🔥</span><span>💯</span><span>✨</span><span>🌟</span><span>💪</span><span>🙏</span><span>🐶</span><span>🐱</span><span>🐭</span><span>🐹</span><span>🐰</span><span>🦊</span>
+                    <span>🐻</span><span>🐼</span><span>🐨</span><span>🐯</span><span>🦁</span><span>🐮</span><span>🐷</span>
+                </div>
+            </div>
+            <div class="input-tools">
+                <label class="tool-btn" for="fileInput">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                </label>
+                <input type="file" id="fileInput" class="hidden" accept="image/*,.pdf,.doc,.docx,.txt">
+                
+                <button class="tool-btn emoji-trigger" id="emojiBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M8 15s1.5-2 4-2 4 2 4 2"></path>
+                        <path d="M9 9h.01"></path>
+                        <path d="M15 9h.01"></path>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="input-wrapper">
+                <input type="text" id="messageInput" placeholder="输入消息..." onkeydown="handleKeyDown(event)">
+                <button class="send-btn" onclick="sendMessage()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
