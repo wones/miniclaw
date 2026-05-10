@@ -38,7 +38,7 @@
 ```bash
 git clone https://github.com/wones/miniclaw.git
 cd miniclaw
-pip install -e .
+pip install -r requirements.txt
 ```
 
 ## 🚀 Quick Start
