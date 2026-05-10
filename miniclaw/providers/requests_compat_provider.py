@@ -1,0 +1,148 @@
+"""OpenAI compatible provider.
+
+Based on smartmemory's design.
+"""
+from typing import Any
+import openai
+import json
+import time
+import uuid
+from loguru import logger
+from miniclaw.providers.base import LLMProvider, ToolCallRequest, LLMResponse
+import requests
+from openai.types.chat import ChatCompletion
+
+
+class RequestsCompatProvider(LLMProvider):
+    """Requests compatible provider."""
+
+    def __init__(self, api_key, base_url=None, app_sign=None,detection_id=None, default_model='gpt-4o', request_interval=1.0, max_retries=5):
+        self.api_key = api_key
+        self.app_sign = app_sign
+        self.detection_id = detection_id
+        self.base_url = base_url
+        self.default_model = default_model
+        self.request_interval = request_interval
+        self.last_request_time = 0
+        self.max_retries = max_retries
+        
+
+    async def chat(self, messages: list, tools: list = None,model: str | None = None) -> LLMResponse:
+        """Chat with the LLM."""
+        select_model = model or self.default_model
+        for attempt in range(self.max_retries):
+            try:
+                # Rate limiting
+                current_time = time.time()
+                if current_time - self.last_request_time < self.request_interval:
+                    wait_time = self.request_interval - (current_time - self.last_request_time)
+                    logger.debug(f"Rate limiting: waiting {wait_time:.2f} seconds")
+                    time.sleep(wait_time)
+
+                payload = json.dumps({
+                    "stream": False,
+                    "max_tokens": 2000,
+                    "model": f"{select_model}",
+                    "messages": messages
+                    })
+
+                headers = {
+                    'App-Key': f"{self.api_key}",
+                    'App-Sign': f"{self.app_sign}",
+                    'Detection-Type': 'extract',
+                    'Detection-Id': f"{self.detection_id}",
+                    'Content-Type': 'application/json'
+                    }
+              
+
+                rep = requests.request("POST", self.base_url, headers=headers, data=payload)
+                # print(rep.text)
+                response = ChatCompletion.model_validate_json(rep.text.encode("utf-8", "surrogatepass").decode("utf-8", "replace"))
+                
+                self.last_request_time = time.time()
+                
+                # Parse response
+                if not response.choices or not response.choices[0]:
+                    continue
+            
+                message = response.choices[0].message
+                tool_calls = []
+                
+                if message.tool_calls:
+                    for tool_call in message.tool_calls:
+                        try:
+                            arguments = json.loads(tool_call.function.arguments)
+                        except json.JSONDecodeError:
+                            arguments = {}
+                        
+                        tool_calls.append(ToolCallRequest(
+                            id=tool_call.id,
+                            name=tool_call.function.name,
+                            arguments=arguments
+                        ))
+                
+                return LLMResponse(
+                    content=message.content,
+                    tool_calls=tool_calls,
+                    finish_reason=response.choices[0].finish_reason,
+                    usage=response.usage.model_dump() if response.usage else None
+                )
+                
+            except Exception as e:
+                logger.debug(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(2)
+                else:
+                    raise
+
+    def generate(self, messages: list, tools: list = None) -> Any:
+        """Generate a response from the LLM."""
+        try:
+            payload = json.dumps({
+                    "stream": False,
+                    "max_tokens": 2000,
+                    "model": f"{self.default_model}",
+                    "messages": messages
+                    })
+
+            headers = {
+                    'App-Key': f"{self.api_key}",
+                    'App-Sign': f"{self.app_sign}",
+                    'Detection-Type': 'extract',
+                    'Detection-Id': f"{self.detection_id}",
+                    'Content-Type': 'application/json'
+                    }
+
+            rep = requests.request("POST", self.base_url, headers=headers, data=payload)
+
+            response = ChatCompletion.model_validate_json(rep.text.encode("utf-8", "surrogatepass").decode("utf-8", "replace"))
+            
+            
+            if not response.choices or not response.choices[0]:
+                return "Sorry, no response from model"
+            
+            message = response.choices[0].message
+            
+            if message.tool_calls:
+                tool_calls = []
+                for tool_call in message.tool_calls:
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                    
+                    tool_calls.append({
+                        'id': tool_call.id,
+                        'name': tool_call.function.name,
+                        'params': arguments
+                    })
+                return {
+                    'content': message.content,
+                    'tool_calls': tool_calls
+                }
+            else:
+                return message.content
+                
+        except Exception as e:
+            logger.error(f"Error generating response: {e}")
+            return f"Sorry, I encountered an error: {str(e)}"
