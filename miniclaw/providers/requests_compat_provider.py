@@ -95,13 +95,14 @@ class RequestsCompatProvider(LLMProvider):
                 else:
                     raise
 
-    def generate(self, messages: list, tools: list = None) -> Any:
+    def generate(self, messages: list, tools: list = None,model: str | None = None) -> Any:
         """Generate a response from the LLM."""
+        select_model = model or self.default_model
         try:
             payload = json.dumps({
                     "stream": False,
                     "max_tokens": 2000,
-                    "model": f"{self.default_model}",
+                    "model": f"{select_model}",
                     "messages": messages
                     })
 
