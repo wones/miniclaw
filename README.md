@@ -7,6 +7,7 @@
 </div>
 
 ## 📢 News
+- **2026-05-14** ⏰ 实现定时任务管理.
 - **2026-05-11** 💻 优化前端UI功能:实现可视化会话管理.
 - **2026-05-10** 💻 实现前端UI:具备可视化对话/增加request请求调用大模型方法.
 - **2026-05-01** 📄 优化上下文治理.
@@ -30,6 +31,7 @@
 - [📦 Install](#-install)
 - [🚀 Quick Start](#-quick-start)
 - [💬 Http Request Format](#-http-request-format)
+- [💻  UI Chat Conversation](#--ui-chat-conversation)
 
 
 ## 📦 Install
