@@ -28,12 +28,17 @@ from .secure_tool import (
 from .memory_tool import MemoryTool
 from .exec_tool import ExecTool
 from .web_tool import HttpRequestTool,WebFetchTool,WebSearchTool
+from .cron_tool import CronTool
+from miniclaw.agent.cron import CronScheduler
+import asyncio
 
 
 def setup_tools(
     memory_store,
     workspace,
     restrict_to_workspace: bool = False,
+    cron_scheduler = None,
+    bus=None,
 ) -> ToolRegistry:
     """Setup and register all tools.
 
@@ -41,10 +46,19 @@ def setup_tools(
         memory_store: The memory store instance.
         workspace: Path to the workspace directory.
         restrict_to_workspace: If True, restrict file/exec access to workspace.
+        cron_scheduler: Optional CronScheduler instance.
+        bus: Optional MessageBus instance for SSE推送
     """
     registry = ToolRegistry()
 
     allowed_dir = workspace if restrict_to_workspace else None
+
+    # 初始化 cron 调度器
+    if cron_scheduler is None:
+        cron_path = workspace / "cron" / "jobs.json"
+        cron_scheduler = CronScheduler(str(cron_path),bus=bus,memory_store=memory_store)
+    # 启动调度器
+    asyncio.create_task(cron_scheduler.start())
 
     # Create and register tools
     tools = [
@@ -65,11 +79,13 @@ def setup_tools(
         ),
         HttpRequestTool(),
         WebFetchTool(),
-        WebSearchTool()
+        WebSearchTool(),
+        CronTool(cron_scheduler),
     ]
 
     for tool in tools:
         registry.register(tool)
+    
 
     return registry
 

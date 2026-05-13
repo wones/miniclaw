@@ -45,7 +45,8 @@ class miniclaw:
         memory_store = MemoryStore(workspace)
         context_builder = ContextBuilder(workspace, timezone=None)
         context_builder.set_memory_store(memory_store)
-        tool_registry = setup_tools(memory_store, workspace)
+        
+    
         consolidator = Consolidator(
             store=memory_store,
             provider=provider,
@@ -60,6 +61,10 @@ class miniclaw:
             session_ttl_minutes=30,
         )
         bus = MessageBus()
+
+        # 初始化工具注册表
+        tool_registry = setup_tools(memory_store, workspace,bus=bus)
+
         loop = AgentLoop(
             bus,
             provider,
@@ -106,8 +111,11 @@ class miniclaw:
 
             asyncio.create_task(run_dream_periodically())
             asyncio.create_task(run_autocompact_periodically())
-
+            
         asyncio.create_task(start_scheduled_tasks())
+        
+
+
         return cls(loop, context_builder)
 
     async def run(self, message, session_key="default"):
